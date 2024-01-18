@@ -295,7 +295,7 @@ void main(void)
         GpioCtrlRegs.GPADIR.bit.GPIO12 = 0;
         GpioCtrlRegs.GPADIR.bit.GPIO13 = 0;
 
-        GpioDataRegs.GPADAT.bit.GPIO8 = 0;  // 8번 핀 HIGH 설정
+        GpioDataRegs.GPADAT.bit.GPIO8 = 0;
         GpioDataRegs.GPADAT.bit.GPIO9 = 0;
         GpioDataRegs.GPADAT.bit.GPIO10 = 1;
         GpioDataRegs.GPADAT.bit.GPIO11 = 1;
@@ -334,6 +334,16 @@ void main(void)
 //======================================================================
 
 
+        /*
+         ADCCLKPS : ADC 쿨럭 설정
+         ADCCLK 는 ADCTRL3 레지스터의 ADCCLKPS 비트와 ADCCTL 레지스터의 CPS 비트에 따라 시스템 쿨럭에서 분주된 HSPCLK를 분주하여
+         ADCCLK 를 만들고 ADCTRL1 레지스터의 ACQ_PS 비트에 따라 S/H 쿨럭 펄스 폭을 결정한다.
+         SMODE_SEL : Sampling Mode 선택
+         CONT_RUN : Continuous run
+         ACQ_PS : S/H 사이클
+         SEQ_CASC : 시퀀스 모드 설정 0 : 병렬, 1 : 직렬
+         ADCCHSELSEQ1.bit.CONVN : ADC 순서 설정
+        */
 
          AdcRegs.ADCTRL3.bit.ADCCLKPS = 1;
          AdcRegs.ADCTRL3.bit.SMODE_SEL = 1;
@@ -347,25 +357,91 @@ void main(void)
          AdcRegs.ADCCHSELSEQ1.bit.CONV01 = 1;
          AdcRegs.ADCCHSELSEQ1.bit.CONV02 = 2;
 
+        /*
+         EPWM_SOCB_SEQ : EPWM compare B SOC enable
+         SEQ1 Interrupt enable
+
+        */
          AdcRegs.ADCTRL2.bit.EPWM_SOCB_SEQ = 1;
          AdcRegs.ADCTRL2.bit.INT_ENA_SEQ1 = 1;
 
+        /*
+         TBCLK는 Time Base clock을 의미하며 pwm의 clock으로 사용하며 수식은
+         TBCLK = SYSCLK / (HSPCLKDIV * CLKDIV)
+
+         EPwm1Regs.ETPS.bit.INTPRD : EPWMxINTn Period Select
+         EPwm1Regs.TBCTL.bit.CTRMODE : Counter Mode
+         EPwm1Regs.TBCTL.bit.HSPCLKDIV : High speed time pre-scale
+         EPwm1Regs.TBCTL.bit.CLKDIV : Timebase clock pre-scale
+        */
 
          EPwm1Regs.ETPS.bit.INTPRD = 1;
          EPwm1Regs.TBCTL.bit.CTRMODE = 2;
          EPwm1Regs.TBCTL.bit.HSPCLKDIV = 1;
          EPwm1Regs.TBCTL.bit.CLKDIV = 0;
 
-         EPwm1Regs.TBPRD = SW_F_Constant;// 20kHz 설정
-         EPwm1Regs.TBCTR = 0x0000;              // TB 카운터 초기화
+
+        /*
+         ------> PWM 주기 설정 참고 https://yeahhappyday.tistory.com/entry/ePWM-%EC%84%A4%EC%A0%95
+
+         EPwm1Regs.TBPRD : Period register set
+         EPwm1Regs.TBCTR : Counter
+
+         TBCTL 은 타임 베이스 서브모듈 컨트롤러, TBPRD 는 주기 설정 레지스터, 이 두개가 가장 중요하다.
+         EPwm1Regs.ETSEL.bit.SOCAEN    = 0;    // Disable SOC on A group
+         EPwm1Regs.ETSEL.bit.SOCASEL    = 4;   // Select SOC on up-count
+         EPwm1Regs.ETPS.bit.SOCAPRD = 1;       // Generate pulse on 1st event
+        */
+
+         EPwm1Regs.TBPRD = SW_F_Constant;  // 설정값
+         EPwm1Regs.TBCTR = 0x0000;
          EPwm1Regs.AQCTLA.bit.CAU = AQ_CLEAR;
          EPwm1Regs.AQCTLA.bit.CAD = AQ_SET;
          EPwm1Regs.DBCTL.bit.POLSEL = 0;
          EPwm1Regs.CMPA.half.CMPA = 0;
 
+         // --------------------------------------------------------------
+
+         /* ADC 설정 예시
+          AdcRegs.ADCTRL3.bit.ADCCLKPS = 3;      // ADCCLK = HSPCLK/(ADCCLKPS*2)/(CPS+1)
+          AdcRegs.ADCTRL1.bit.CPS = 1;    // ADCCLK = 75MHz/(3*2)/(1+1) = 6.25MHz
+          AdcRegs.ADCTRL1.bit.ACQ_PS = 3;    // 샘플/홀드 사이클 = ACQ_PS + 1 = 4 (ADCCLK기준)
+
+          AdcRegs.ADCTRL1.bit.SEQ_CASC = 1;   // 시퀀스 모드 설정: 직렬 시퀀스 모드 (0:병렬 모드, 1:직렬 모드)
+          AdcRegs.ADCMAXCONV.bit.MAX_CONV1 = 0;  // ADC 채널수 설정: 1개(=MAX_CONV+1)채널을 ADC
+          AdcRegs.ADCCHSELSEQ1.bit.CONV00 = 4;   // ADC 순서 설정: 첫번째로 ADCINA2 채널을 ADC
+
+          AdcRegs.ADCTRL2.bit.EPWM_SOCB_SEQ = 1;   // ePWM_SOCB로 ADC 시퀀스 시동
+          AdcRegs.ADCTRL2.bit.INT_ENA_SEQ1 = 1;  // ADC 시퀀스 완료시 인터럽트 발생 설정
+
+          //ePWM_SOCB 이벤트 트리거 설정
+          EPwm3Regs.ETSEL.bit.SOCBEN = 1;    // SOCB 이벤트 트리거 Enable
+          EPwm3Regs.ETSEL.bit.SOCBSEL = 2;   // SCCB 트리거 조건 : 카운터 주기 일치 시
+          EPwm3Regs.ETPS.bit.SOCBPRD = 1;    // SOCB 이벤트 분주 설정 : 트리거 조건 한번 마다
+          EPwm3Regs.TBCTL.bit.CTRMODE = 0;   // 카운트 모드 설정: Up-conut 모드
+          EPwm3Regs.TBCTL.bit.HSPCLKDIV = 1;   // TBCLK = [SYSCLKOUT / ((HSPCLKDIV*2) * 2^(CLKDIV))]
+          EPwm3Regs.TBCTL.bit.CLKDIV = 1;    // TBCLK = [150MHz / (2*2)] = 37.5MHz
+             EPwm3Regs.TBPRD = 37499;     // TB주기= (TBPRD+1)/TBCLK = 37500/37.5MHz = 1us(1KHz)
+          EPwm3Regs.TBCTR = 0x0000;     // TB 카운터 초기화
+
+          // PIE의 ADC 인터럽트 활성화
+          PieCtrlRegs.PIEIER1.bit.INTx6 = 1;   // PIE 인터럽트(ADCINT) 활성화
+          IER |= M_INT1;         // CPU 인터럽트(INT1)  활성화
+
+
+         -------> 출처 : https://blog.naver.com/cyjrntwkd/70124266599
+
+        */
+
+
+
+
+
          EPwm2Regs.ETSEL.bit.SOCBEN = 1;
          EPwm2Regs.ETSEL.bit.SOCBSEL = 2;
          EPwm2Regs.ETPS.bit.SOCBPRD = 1;
+
+
          EPwm2Regs.ETPS.bit.INTPRD = 1;
          EPwm2Regs.TBCTL.bit.CTRMODE = 2;
          EPwm2Regs.TBCTL.bit.HSPCLKDIV = 1;
