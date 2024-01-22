@@ -418,7 +418,9 @@ void main(void)
           EPwm3Regs.ETSEL.bit.SOCBEN = 1;    // SOCB 이벤트 트리거 Enable
           EPwm3Regs.ETSEL.bit.SOCBSEL = 2;   // SCCB 트리거 조건 : 카운터 주기 일치 시
           EPwm3Regs.ETPS.bit.SOCBPRD = 1;    // SOCB 이벤트 분주 설정 : 트리거 조건 한번 마다
-          EPwm3Regs.TBCTL.bit.CTRMODE = 0;   // 카운트 모드 설정: Up-conut 모드
+          EPwm3Regs.TBCTL.bit.CTRMODE = 0;   // 카운트 모드 설정:
+                                             // 0 : Up-count , 1 : Donw-count, 2 : Up-Down-count, 3 : Freeze
+
           EPwm3Regs.TBCTL.bit.HSPCLKDIV = 1;   // TBCLK = [SYSCLKOUT / ((HSPCLKDIV*2) * 2^(CLKDIV))]
           EPwm3Regs.TBCTL.bit.CLKDIV = 1;    // TBCLK = [150MHz / (2*2)] = 37.5MHz
              EPwm3Regs.TBPRD = 37499;     // TB주기= (TBPRD+1)/TBCLK = 37500/37.5MHz = 1us(1KHz)
@@ -436,7 +438,7 @@ void main(void)
 
 
 
-
+         // SOC 신호 혹은 인터럽트는 ADC 변환의 시작 신호를 의미한다.
          EPwm2Regs.ETSEL.bit.SOCBEN = 1;
          EPwm2Regs.ETSEL.bit.SOCBSEL = 2;
          EPwm2Regs.ETPS.bit.SOCBPRD = 1;
@@ -450,6 +452,21 @@ void main(void)
          EPwm2Regs.TBPRD = 1875;// 20kHz 설정
 
          EPwm2Regs.TBCTR = 0x0000;              // TB 카운터 초기화
+
+         /*
+          AQ (Action Qualifier 는 스위칭 상태를 결정하는 레지스터
+          CAU,CAD,CBU,CBD,ZRO,PRD 레지스터가 있다.
+          - DSP 교재 PDF 기준 108 페이지 참고
+
+          현재 CAU = AQ_CLEAR ( == 1 ) 는 UP COUNT MODE 일 때,COUNTER 값과 CMPA 레지스터의 값이 같으면 LOW 상태 출력,
+          CAD = AQ_SET ( == 2 ) 는 DOWN COUNT MODE 일 때, COUNTER 값과 CMPA 레지스터의 값이 같으면 HIGH 상태 출력
+
+          기본적으로 UP-DWON COUNT MODE 를 사용하는 경우, UP 일때와 DOWN 일 때 두 지점에서 CMP 값과 만나는 지점이 발생한다.
+          그렇기 떄문에 UP 방향일 때인 CAU, DOWN 방향일 떄의 CAD 를 설정하여 스위칭 상태를 지정할 수 있다.
+
+          마찬가지로 UP 혹은 DWON COUNT MODE 를 사용하는 경우에는 COUNTER = PRD 혹은 ZRO 가 스위칭 상태의 기준이 되기 때문에
+          CAU + ZRO / ZRO + CAD 레지스터를 활용하여 스위칭 상태를 결정한다.
+         */
          EPwm2Regs.AQCTLA.bit.CAU = AQ_CLEAR;
          EPwm2Regs.AQCTLA.bit.CAD = AQ_SET;
          EPwm2Regs.DBCTL.bit.POLSEL = 0;
